@@ -56,6 +56,318 @@ def _check_X_numpy_ndarray_1d(ensure_1d=True):
     
     return decorator
 
+class TimeSeriesDifferentiatorPctChange(BaseEstimator, TransformerMixin):
+    """
+    Transforms a time series into a percentage change time series of a specified order
+    and provides functionality to revert the percentage change. 
+    
+    When using a `direct` module Forecaster, the model in step 1 must be 
+    used if you want to reverse the percentage change of the training time 
+    series with the `inverse_transform_training` method.
+
+    Parameters
+    ----------
+    order : int
+        The order of percentage change to be applied.
+    window_size : int, default None
+        The window size used by the forecaster. This is required to revert the 
+        percentage change for the target variable `y` or its predicted values.
+
+    Attributes
+    ----------
+    order : int
+        The order of percentage change.
+    initial_values : list
+        List with the first value of the time series before each percentage change.
+        If `order = 2`, first value correspond with the first value of the original
+        time series and the second value correspond with the first value of the
+        percentage change time series of order 1. These values are necessary to 
+        revert the percentage change and reconstruct the original time series.
+    pre_train_values : list
+        List with the first training value of the time series before each percentage change.
+        For `order = 1`, the value correspond with the last value of the window used to
+        create the predictors. For order > 1, the value correspond with the first
+        value of the percentage change time series prior to the next percentage change.
+        These values are necessary to revert the percentage change and reconstruct the
+        training time series.
+    last_values : list
+        List with the last value of the time series before each percentage change, 
+        used to revert percentage change on subsequent data windows. If `order = 2`, 
+        first value correspond with the last value of the original time series 
+        and the second value correspond with the last value of the percentage change 
+        time series of order 1. This is essential for correctly transforming a 
+        time series that follows immediately after the series used to fit the 
+        transformer.
+
+    """
+
+    def __init__(
+        self, 
+        order: int = 1,
+        window_size: int = None
+    ) -> None:
+        
+
+        if not isinstance(order, (int, np.integer)):
+            raise TypeError(
+                f"Parameter `order` must be an integer greater than 0. Found {type(order)}."
+            )
+        if order < 1:
+            raise ValueError(
+                f"Parameter `order` must be an integer greater than 0. Found {order}."
+            )
+
+        if window_size is not None:
+            if not isinstance(window_size, (int, np.integer)):
+                raise TypeError(
+                    f"Parameter `window_size` must be an integer greater than 0. "
+                    f"Found {type(window_size)}."
+                )
+            if window_size < 1:
+                raise ValueError(
+                    f"Parameter `window_size` must be an integer greater than 0. "
+                    f"Found {window_size}."
+                )
+
+        self.order = order
+        self.window_size = window_size
+        self.initial_values = []
+        self.pre_train_values = []
+        self.last_values = []
+
+    def __repr__(
+        self
+    ) -> str:
+        """
+        Information displayed when printed.
+        """
+            
+        return (
+            f"TimeSeriesDifferentiatorPctChange(order={self.order}, window_size={self.window_size})"
+        )
+
+    @_check_X_numpy_ndarray_1d()
+    def fit(
+        self, 
+        X: np.ndarray, 
+        y: Any = None
+    ) -> Self:
+        """
+        Fits the transformer. Stores the values needed to revert the 
+        percentage change of different window of the time series, original 
+        time series, training time series, and a time series that follows
+        immediately after the series used to fit the transformer.
+
+        Parameters
+        ----------
+        X : numpy ndarray
+            Time series to be percentage changed.
+        y : Ignored
+            Not used, present here for API consistency by convention.
+
+        Returns
+        -------
+        self : TimeSeriesDifferentiatorPctChange
+
+        """
+
+        self.initial_values = []
+        self.pre_train_values = []
+        self.last_values = []
+
+        for i in range(self.order):
+            if i == 0:
+                self.initial_values.append(X[0])
+                if self.window_size is not None:
+                    self.pre_train_values.append(X[self.window_size - self.order])
+                self.last_values.append(X[-1])
+                X_pct = X[1:] / X[:-1]  # Calculate percentage change centered around 1
+            else:
+                self.initial_values.append(X_pct[0])
+                if self.window_size is not None:
+                    self.pre_train_values.append(X_pct[self.window_size - self.order])
+                self.last_values.append(X_pct[-1])
+                X_pct = X_pct[1:] / X_pct[:-1]  # Calculate percentage change centered around 1
+
+        return self
+
+    @_check_X_numpy_ndarray_1d()
+    def transform(
+        self, 
+        X: np.ndarray, 
+        y: Any = None
+    ) -> np.ndarray:
+        """
+        Transforms a time series into a percentage change time series of order n.
+
+        Parameters
+        ----------
+        X : numpy ndarray
+            Time series to be percentage changed.
+        y : Ignored
+            Not used, present here for API consistency by convention.
+        
+        Returns
+        -------
+        X_pct : numpy ndarray
+            Percentage change time series. The length of the array is the same as
+            the original time series but the first n `order` values are nan.
+
+        """
+
+        X_pct = X[self.order:] / X[:-self.order]  # Calculate percentage change centered around 1
+        X_pct = np.append((np.full(shape=self.order, fill_value=np.nan)), X_pct)
+
+        return X_pct
+
+    @_check_X_numpy_ndarray_1d()
+    def inverse_transform(
+        self, 
+        X: np.ndarray, 
+        y: Any = None
+    ) -> np.ndarray:
+        """
+        Reverts the percentage change. To do so, the input array is assumed to be
+        the same time series used to fit the transformer but percentage changed.
+
+        Parameters
+        ----------
+        X : numpy ndarray
+            Percentage change time series.
+        y : Ignored
+            Not used, present here for API consistency by convention.
+        
+        Returns
+        -------
+        X_undiff : numpy ndarray
+            Reverted percentage change time series.
+        
+        """
+
+        # Remove initial nan values if present
+        X = X[np.argmax(~np.isnan(X)):]
+        for i in range(self.order):
+            if i == 0:
+                X_undiff = np.insert(X, 0, self.initial_values[-1])
+                X_undiff = np.cumprod(X_undiff) * self.initial_values[-1]  # Revert percentage change
+            else:
+                X_undiff = np.insert(X_undiff, 0, self.initial_values[-(i + 1)])
+                X_undiff = np.cumprod(X_undiff) * self.initial_values[-(i + 1)]  # Revert percentage change
+
+        return X_undiff
+
+    @_check_X_numpy_ndarray_1d()
+    def inverse_transform_training(
+        self, 
+        X: np.ndarray, 
+        y: Any = None
+    ) -> np.ndarray:
+        """
+        Reverts the percentage change. To do so, the input array is assumed to be
+        the percentage change training time series generated with the original 
+        time series used to fit the transformer.
+
+        When using a `direct` module Forecaster, the model in step 1 must be 
+        used if you want to reverse the percentage change of the training time 
+        series with the `inverse_transform_training` method.
+
+        Parameters
+        ----------
+        X : numpy ndarray
+            Percentage change time series.
+        y : Ignored
+            Not used, present here for API consistency by convention.
+        
+        Returns
+        -------
+        X_undiff : numpy ndarray
+            Reverted percentage change time series.
+        
+        """
+
+        if not self.pre_train_values:
+            raise ValueError(
+                "The `window_size` parameter must be set before fitting the "
+                "transformer to revert the percentage change of the training "
+                "time series."
+            )
+
+        # Remove initial nan values if present
+        X = X[np.argmax(~np.isnan(X)):]
+        for i in range(self.order):
+            if i == 0:
+                X_undiff = np.insert(X, 0, self.pre_train_values[-1])
+                X_undiff = np.cumprod(X_undiff) * self.pre_train_values[-1]  # Revert percentage change
+            else:
+                X_undiff = np.insert(X_undiff, 0, self.pre_train_values[-(i + 1)])
+                X_undiff = np.cumprod(X_undiff) * self.pre_train_values[-(i + 1)]  # Revert percentage change
+
+        # Remove initial values as they are not part of the training time series
+        X_undiff = X_undiff[self.order:]
+
+        return X_undiff
+
+    @_check_X_numpy_ndarray_1d(ensure_1d=False)
+    def inverse_transform_next_window(
+        self,
+        X: np.ndarray,
+        y: Any = None
+    ) -> np.ndarray:
+        """
+        Reverts the percentage change. The input array `X` is assumed to be a 
+        percentage change time series of order n that starts right after the
+        the time series used to fit the transformer.
+
+        Parameters
+        ----------
+        X : numpy ndarray
+            Percentage change time series. It is assumed to start right after
+            the time series used to fit the transformer.
+        y : Ignored
+            Not used, present here for API consistency by convention.
+
+        Returns
+        -------
+        X_undiff : numpy ndarray
+            Reverted percentage change time series.
+        
+        """
+
+        array_ndim = X.ndim
+        if array_ndim == 1:
+            X = X[:, np.newaxis]
+
+        # Remove initial rows with nan values if present
+        X = X[~np.isnan(X).any(axis=1)]
+
+        for i in range(self.order):
+            if i == 0:
+                X_undiff = np.cumprod(X, axis=0) * self.last_values[-1]  # Revert percentage change
+            else:
+                X_undiff = np.cumprod(X_undiff, axis=0) * self.last_values[-(i + 1)]  # Revert percentage change
+
+        if array_ndim == 1:
+            X_undiff = X_undiff.ravel()
+
+        return X_undiff
+
+    def set_params(self, **params):
+        """
+        Set the parameters of the TimeSeriesDifferentiatorPctChange.
+        
+        Parameters
+        ----------
+        params : dict
+            A dictionary of the parameters to set.
+
+        Returns
+        -------
+        None
+        
+        """
+
+        for param, value in params.items():
+            setattr(self, param, value)
 
 class TimeSeriesDifferentiator(BaseEstimator, TransformerMixin):
     """

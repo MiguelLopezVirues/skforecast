@@ -49,7 +49,7 @@ from ..utils import (
     transform_dataframe,
     set_skforecast_warnings
 )
-from ..preprocessing import TimeSeriesDifferentiator
+from ..preprocessing import TimeSeriesDifferentiator, TimeSeriesDifferentiatorPctChange
 from ..model_selection._utils import _extract_data_folds_multiseries
 
 
@@ -401,9 +401,15 @@ class ForecasterRecursiveMultiSeries(ForecasterBase):
                     f"greater than 1. Got {differentiation}."
                 )
             self.window_size += self.differentiation
-            self.differentiator = TimeSeriesDifferentiator(
-                order=self.differentiation, window_size=self.window_size
-            )
+            if self.differentiator == "pct":
+                self.differentiator = TimeSeriesDifferentiatorPctChange(
+                    order=self.differentiation, window_size=self.window_size
+                )
+            
+            else:
+                self.differentiator = TimeSeriesDifferentiator(
+                    order=self.differentiation, window_size=self.window_size
+                )
 
         self.fit_kwargs = check_select_fit_kwargs(
                               regressor  = regressor,

@@ -47,7 +47,7 @@ from ..utils import (
     select_n_jobs_fit_forecaster,
     set_skforecast_warnings
 )
-from ..preprocessing import TimeSeriesDifferentiator
+from ..preprocessing import TimeSeriesDifferentiator, TimeSeriesDifferentiatorPctChange
 from ..model_selection._utils import _extract_data_folds_multiseries
 
 
@@ -376,9 +376,15 @@ class ForecasterDirectMultiVariate(ForecasterBase):
                     f"greater than 1. Got {differentiation}."
                 )
             self.window_size += self.differentiation
-            self.differentiator = TimeSeriesDifferentiator(
-                order=self.differentiation, window_size=self.window_size
-            )
+            if self.differentiator == "pct":
+                self.differentiator = TimeSeriesDifferentiatorPctChange(
+                    order=self.differentiation, window_size=self.window_size
+                )
+            
+            else:
+                self.differentiator = TimeSeriesDifferentiator(
+                    order=self.differentiation, window_size=self.window_size
+                )
             
         self.weight_func, self.source_code_weight_func, _ = initialize_weights(
             forecaster_name = type(self).__name__, 
