@@ -1,5 +1,6 @@
 from .preprocessing import (
     TimeSeriesDifferentiator,
+    TimeSeriesDifferentiatorPctChange,
     DateTimeFeatureTransformer,
     create_datetime_features,
     exog_long_to_dict,
