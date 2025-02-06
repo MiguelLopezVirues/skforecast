@@ -321,6 +321,7 @@ class ForecasterRecursiveMultiSeries(ForecasterBase):
         weight_func: Optional[Union[Callable, dict]] = None,
         series_weights: Optional[dict] = None,
         differentiation: Optional[int] = None,
+        differentiator: Optional[str] = None,
         dropna_from_series: bool = False,
         fit_kwargs: Optional[dict] = None,
         forecaster_id: Optional[Union[str, int]] = None
@@ -339,7 +340,7 @@ class ForecasterRecursiveMultiSeries(ForecasterBase):
         self.series_weights                     = series_weights
         self.series_weights_                    = None
         self.differentiation                    = differentiation
-        self.differentiator                     = None
+        self.differentiator                     = differentiator
         self.differentiator_                    = None
         self.dropna_from_series                 = dropna_from_series
         self.last_window_                       = None

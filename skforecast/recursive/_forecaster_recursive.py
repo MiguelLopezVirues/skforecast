@@ -247,6 +247,7 @@ class ForecasterRecursive(ForecasterBase):
         transformer_exog: Optional[object] = None,
         weight_func: Optional[Callable] = None,
         differentiation: Optional[int] = None,
+        differentiator: Optional[str] = None,
         fit_kwargs: Optional[dict] = None,
         binner_kwargs: Optional[dict] = None,
         forecaster_id: Optional[Union[str, int]] = None
@@ -258,7 +259,7 @@ class ForecasterRecursive(ForecasterBase):
         self.weight_func                        = weight_func
         self.source_code_weight_func            = None
         self.differentiation                    = differentiation
-        self.differentiator                     = None
+        self.differentiator                     = differentiator
         self.last_window_                       = None
         self.index_type_                        = None
         self.index_freq_                        = None
